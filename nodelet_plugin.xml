@@ -1,0 +1,7 @@
+<library path="lib/libdqnmpc_control_nodelet">
+  <class name="dq_cpp/NMPCControlNodelet" type="NMPCControlNodelet" base_class_type="nodelet::Nodelet">
+    <description>
+      nmpc_control
+    </description>
+  </class>
+</library>

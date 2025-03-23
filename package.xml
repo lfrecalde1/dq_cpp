@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>dq_cpp</name>
+  <version>0.0.0</version>
+  <description>TODO: Package description</description>
+  <maintainer email="fernandorecalde@uti.edu.ec">fer</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend condition="$ROS_VERSION == 1">catkin</buildtool_depend>
+  <depend condition="$ROS_VERSION == 1">geometry_msgs</depend>
+  <depend condition="$ROS_VERSION == 1">nav_msgs</depend>
+  <depend condition="$ROS_VERSION == 1">quadrotor_msgs</depend>
+  <depend condition="$ROS_VERSION == 1">std_msgs</depend>
+  <depend condition="$ROS_VERSION == 1">sensor_msgs</depend>
+  <depend condition="$ROS_VERSION == 1">roscpp</depend>
+  <depend condition="$ROS_VERSION == 1">rospy</depend>
+  <depend condition="$ROS_VERSION == 1">tf</depend>
+  <depend condition="$ROS_VERSION == 1">pluginlib</depend>
+  <depend condition="$ROS_VERSION == 1">nodelet</depend>
+
+  <buildtool_depend condition="$ROS_VERSION == 2">ament_cmake</buildtool_depend>
+  <depend condition="$ROS_VERSION == 2">rclcpp</depend>
+  <depend condition="$ROS_VERSION == 2">geometry_msgs</depend>
+  <depend condition="$ROS_VERSION == 2">nav_msgs</depend>
+  <depend condition="$ROS_VERSION == 2">quadrotor_msgs</depend>
+  <depend condition="$ROS_VERSION == 2">std_msgs</depend>
+  <depend condition="$ROS_VERSION == 2">sensor_msgs</depend>
+  <depend condition="$ROS_VERSION == 2">tf2</depend>
+  <depend condition="$ROS_VERSION == 2">tf2_ros</depend>
+  <depend condition="$ROS_VERSION == 2">rclcpp_components</depend>
+
+  <depend>eigen</depend>
+  <depend>mujoco_msgs</depend>
+
+  <export>
+    <build_type condition="$ROS_VERSION == 1">catkin</build_type>
+    <build_type condition="$ROS_VERSION == 2">ament_cmake</build_type>
+    <nodelet plugin="${prefix}/nodelet_plugin.xml" condition="$ROS_VERSION == 1"/>
+  </export>
+
+</package>
