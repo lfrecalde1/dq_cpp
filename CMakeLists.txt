@@ -21,7 +21,6 @@ find_package(yaml-cpp REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(rclcpp_components REQUIRED)
-find_package(mujoco_msgs REQUIRED)
 
 # ARM NEON flags
 if ("${CMAKE_HOST_SYSTEM_PROCESSOR}" STREQUAL "armv7l")
@@ -51,7 +50,6 @@ set(dependencies
   tf2
   tf2_ros
   rclcpp_components
-  mujoco_msgs
 )
 
 include_directories(include

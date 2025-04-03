@@ -8,7 +8,6 @@
 #include <quadrotor_msgs/msg/position_command.hpp>
 #include <quadrotor_msgs/msg/trajectory_point.hpp>
 #include <quadrotor_msgs/msg/trpy_command.hpp>
-#include <mujoco_msgs/msg/dual.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -75,6 +74,13 @@ public:
                 -frame_dx_, frame_dx_, -km_ / kf_, -km_ / kf_, km_ / kf_, km_ / kf_;
             mixer_matrix_inv_ = mixer_matrix.inverse();
         }
+
+        else if (platform_type_ == "eagle") {
+            mixer_matrix << 1, 1, 1, 1, -frame_dy_, frame_dy_, frame_dy_, -frame_dy_, -frame_dx_, frame_dx_,
+                -frame_dx_, frame_dx_, -km_ / kf_, -km_ / kf_, km_ / kf_, km_ / kf_;
+            mixer_matrix_inv_ = mixer_matrix.inverse();
+        }
+
         else if (platform_type_ == "iris") {
             mixer_matrix << 1, 1, 1, 1, frame_dy_, -frame_dy_, -frame_dy_, frame_dy_, -frame_dx_, frame_dx_,
                 -frame_dx_, frame_dx_, km_ / kf_, km_ / kf_, -km_ / kf_, -km_ / kf_;
@@ -105,6 +111,7 @@ public:
         pub_trpy_cmd_ = this->create_publisher<quadrotor_msgs::msg::TRPYCommand>("trpy_cmd", 1);
         pub_ref_traj_ = this->create_publisher<nav_msgs::msg::Path>("reference_path", 1);
         pub_pred_traj_ = this->create_publisher<nav_msgs::msg::Path>("predicted_path", 1);
+        pub_desired_pose_ = this->create_publisher<nav_msgs::msg::Odometry>("reference_pose", 1);
         //pub_dual_ = this->create_publisher<mujoco_msgs::msg::Dual>("dual_cpp", 10);
 
         sub_odometry_ = this->create_subscription<nav_msgs::msg::Odometry>(
@@ -179,6 +186,8 @@ private:
     rclcpp::Publisher<quadrotor_msgs::msg::TRPYCommand>::SharedPtr pub_trpy_cmd_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_ref_traj_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_pred_traj_;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_desired_pose_;
+
     //rclcpp::Publisher<mujoco_msgs::msg::Dual>::SharedPtr pub_dual_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odometry_;
     rclcpp::Subscription<quadrotor_msgs::msg::PositionCommand>::SharedPtr sub_position_cmd_;
@@ -641,6 +650,19 @@ void NMPCControlNodelet::publishReference() {
         path_msg.poses.push_back(pose);
     }
     pub_ref_traj_->publish(path_msg);
+
+    // Sent the first pose 
+    if (!path_msg.poses.empty()) {
+      geometry_msgs::msg::PoseStamped first_pose_stamped = path_msg.poses.front();
+
+      nav_msgs::msg::Odometry odom_msg;
+
+      odom_msg.header.stamp = clock_.now();
+      odom_msg.header.frame_id = frame_id_;
+
+      odom_msg.pose.pose = first_pose_stamped.pose;
+      pub_desired_pose_->publish(odom_msg);
+    }
 }
 
 void NMPCControlNodelet::publishPrediction() {

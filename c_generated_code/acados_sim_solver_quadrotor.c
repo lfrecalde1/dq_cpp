@@ -127,7 +127,7 @@ int quadrotor_acados_sim_create(quadrotor_sim_solver_capsule * capsule)
     // sim opts
     sim_opts *quadrotor_sim_opts = sim_opts_create(quadrotor_sim_config, quadrotor_sim_dims);
     capsule->acados_sim_opts = quadrotor_sim_opts;
-    int tmp_int = 2;
+    int tmp_int = 1;
     sim_opts_set(quadrotor_sim_config, quadrotor_sim_opts, "newton_iter", &tmp_int);
     double tmp_double = 0;
     sim_opts_set(quadrotor_sim_config, quadrotor_sim_opts, "newton_tol", &tmp_double);
@@ -135,7 +135,7 @@ int quadrotor_acados_sim_create(quadrotor_sim_solver_capsule * capsule)
     sim_opts_set(quadrotor_sim_config, quadrotor_sim_opts, "collocation_type", &collocation_type);
 
  
-    tmp_int = 4;
+    tmp_int = 2;
     sim_opts_set(quadrotor_sim_config, quadrotor_sim_opts, "num_stages", &tmp_int);
     tmp_int = 1;
     sim_opts_set(quadrotor_sim_config, quadrotor_sim_opts, "num_steps", &tmp_int);

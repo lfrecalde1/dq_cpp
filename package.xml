@@ -31,7 +31,6 @@
   <depend condition="$ROS_VERSION == 2">rclcpp_components</depend>
 
   <depend>eigen</depend>
-  <depend>mujoco_msgs</depend>
 
   <export>
     <build_type condition="$ROS_VERSION == 1">catkin</build_type>
