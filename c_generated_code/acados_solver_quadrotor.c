@@ -448,7 +448,7 @@ void quadrotor_acados_create_5_set_nlp_in(quadrotor_solver_capsule* capsule, con
     }
     else
     {
-        double time_step = 0.047619047619047616;
+        double time_step = 0.07142857142857142;
         for (int i = 0; i < N; i++)
         {
             ocp_nlp_in_set(nlp_config, nlp_dims, nlp_in, i, "Ts", &time_step);
@@ -557,7 +557,7 @@ void quadrotor_acados_create_5_set_nlp_in(quadrotor_solver_capsule* capsule, con
     double* ubu = lubu + NBU;
     
     lbu[0] = 0.2;
-    ubu[0] = 42;
+    ubu[0] = 52;
     lbu[1] = -0.35;
     ubu[1] = 0.35;
     lbu[2] = -0.35;
@@ -636,11 +636,11 @@ int fixed_hess = 0;
 
     // set up sim_method_num_stages
     // all sim_method_num_stages are identical
-    int sim_method_num_stages = 2;
+    int sim_method_num_stages = 4;
     for (int i = 0; i < N; i++)
         ocp_nlp_solver_opts_set_at_stage(nlp_config, nlp_opts, i, "dynamics_num_stages", &sim_method_num_stages);
 
-    int newton_iter_val = 1;
+    int newton_iter_val = 2;
     for (int i = 0; i < N; i++)
         ocp_nlp_solver_opts_set_at_stage(nlp_config, nlp_opts, i, "dynamics_newton_iter", &newton_iter_val);
 
