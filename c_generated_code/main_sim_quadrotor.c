@@ -77,6 +77,7 @@ int main()
     x_current[11] = 0.0;
     x_current[12] = 0.0;
     x_current[13] = 0.0;
+    x_current[14] = 0.0;
 
   
     x_current[0] = 1;
@@ -93,6 +94,7 @@ int main()
     x_current[11] = 0;
     x_current[12] = 0;
     x_current[13] = 0;
+    x_current[14] = 0;
     
   
 
@@ -123,7 +125,7 @@ int main()
     p[15] = 0;
     p[16] = 0;
     p[17] = 0;
-    p[18] = 1;
+    p[18] = 0;
     p[19] = 1;
     p[20] = 1;
     p[21] = 1;
@@ -155,6 +157,9 @@ int main()
     p[47] = 1;
     p[48] = 1;
     p[49] = 1;
+    p[50] = 1;
+    p[51] = 1;
+    p[52] = 1;
 
     quadrotor_acados_sim_update_params(capsule, p, NP);
   

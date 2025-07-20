@@ -19,6 +19,7 @@ public:
     Eigen::Matrix<double, kStateSize, 1> getState() { return current_state_; }
     Eigen::Matrix<double, kStateSize, 1> getPredictedState();
     Eigen::Matrix<double, kInputSize, 1> getPredictedInput();
+    Eigen::Matrix<double, kInputSize, 1> getPredictedInput_k_1();
     Eigen::Matrix<double, kStateSize, kSamples> getPredictedStates();
     Eigen::Matrix<double, kStateSize, kSamples> getReferenceStates();
     Eigen::Matrix<double, kInputSize, kSamples> getReferenceInputs();

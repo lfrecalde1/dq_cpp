@@ -96,7 +96,7 @@ public:
 
         clock_ = rclcpp::Clock();
         pre_odom_quat_ << 1.0, 0.0, 0.0, 0.0;
-        kom_ = {0.13, 0.13, 1.0};
+        kom_ = {0.3, 0.3, 0.05};
         kr_ = {1.5, 1.5, 1.0};
 
         hover_thrust_ = mass_ * gravity_/4;
@@ -174,7 +174,7 @@ private:
     void run();
     void logParameter();
     void publishControl(Eigen::Matrix<double, kStateSize, 1> pred_state,
-                        Eigen::Matrix<double, kInputSize, 1> pred_input);
+                        Eigen::Matrix<double, kInputSize, 1> pred_input, Eigen::Matrix<double, kInputSize, 1> pred_input_k);
     void publishSafeControl();
     void publishReference();
     void publishPrediction();
@@ -390,8 +390,11 @@ void NMPCControlNodelet::run() {
     // Get solution
     Eigen::Matrix<double, kStateSize, 1> pred_state;
     Eigen::Matrix<double, kInputSize, 1> pred_input;
+    Eigen::Matrix<double, kInputSize, 1> pred_input_k_1;
+
     pred_state = controller_.getPredictedState();
     pred_input = controller_.getPredictedInput();
+    pred_input_k_1 = controller_.getPredictedInput_k_1();
 
     // Check if solution has no NaN values
     bool has_nan_in_state = pred_state.array().isNaN().any();
@@ -404,7 +407,7 @@ void NMPCControlNodelet::run() {
     }
 
     // Publish solution
-    publishControl(pred_state, pred_input);
+    publishControl(pred_state, pred_input, pred_input_k_1);
     publishPrediction();
     publishReference();
 }
@@ -558,7 +561,7 @@ void NMPCControlNodelet::motorsCallback(const std_msgs::msg::Bool::SharedPtr mot
 }
 
 void NMPCControlNodelet::publishControl(Eigen::Matrix<double, kStateSize, 1> pred_state,
-                                        Eigen::Matrix<double, kInputSize, 1> pred_input) {
+                                        Eigen::Matrix<double, kInputSize, 1> pred_input, Eigen::Matrix<double, kInputSize, 1> pred_input_k) {
     //Eigen::Matrix<double, kStateSize, 1> pred_state = controller_.getPredictedState();
     //Eigen::Matrix<double, kInputSize, 1> pred_input = controller_.getPredictedInput();
     quadrotor_msgs::msg::TRPYCommand trpy_msg;
@@ -574,9 +577,24 @@ void NMPCControlNodelet::publishControl(Eigen::Matrix<double, kStateSize, 1> pre
     trpy_msg.kr = kr_;
     trpy_msg.aux.enable_motors = enable_motors_;
     trpy_msg.thrust = pred_input(0);
+    trpy_msg.thrust_k = pred_input_k(0);
     trpy_msg.angular_velocity.x = pred_state(8);
     trpy_msg.angular_velocity.y = pred_state(9);
     trpy_msg.angular_velocity.z = pred_state(10);
+
+    // section to compute the desired angular acceleration
+    Eigen::Vector3d ang_acc = Eigen::Vector3d::Zero();
+    Eigen::Vector3d ang_vel = Eigen::Vector3d::Zero();
+    Eigen::Vector3d torque = Eigen::Vector3d::Zero();
+
+    ang_vel << pred_state(8), pred_state(9), pred_state(10);
+    torque << pred_input(1), pred_input(2), pred_input(3);
+    ang_acc = inertia_matrix_.inverse() * (torque - ang_vel.cross(inertia_matrix_ * ang_vel));
+
+    trpy_msg.angular_acceleration.x = torque(0);
+    trpy_msg.angular_acceleration.y = torque(1);
+    trpy_msg.angular_acceleration.z = torque(2);
+
     pub_trpy_cmd_->publish(trpy_msg);
 }
 
@@ -613,6 +631,7 @@ void NMPCControlNodelet::publishReference() {
     Eigen::Matrix<double, 4, 1> quat;
     Eigen::Matrix<double, 4, 1> dual_part;
     Eigen::Matrix<double, 4, 1> t_part;
+    Eigen::Matrix<double, 4, 1> hello;
     Eigen::Matrix<double, 4, 4> H_plus_dual_part;
     for (int i = 0; i < kSamples; i++) {
         // Set dual quaternions values

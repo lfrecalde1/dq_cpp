@@ -36,12 +36,12 @@
 #include "acados_c/ocp_nlp_interface.h"
 #include "acados_c/external_function_interface.h"
 
-#define QUADROTOR_NX     14
+#define QUADROTOR_NX     15
 #define QUADROTOR_NZ     0
 #define QUADROTOR_NU     4
-#define QUADROTOR_NP     50
+#define QUADROTOR_NP     53
 #define QUADROTOR_NBX    0
-#define QUADROTOR_NBX0   14
+#define QUADROTOR_NBX0   15
 #define QUADROTOR_NBU    4
 #define QUADROTOR_NSBX   0
 #define QUADROTOR_NSBU   0

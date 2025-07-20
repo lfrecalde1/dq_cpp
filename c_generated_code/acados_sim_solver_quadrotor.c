@@ -74,7 +74,7 @@ int quadrotor_acados_sim_create(quadrotor_sim_solver_capsule * capsule)
     bool tmp_bool;
 
     
-    double Tsim = 0.047619047619047616;
+    double Tsim = 0.07142857142857142;
 
     
     capsule->sim_impl_dae_fun = (external_function_param_casadi *) malloc(sizeof(external_function_param_casadi));
@@ -170,7 +170,6 @@ int quadrotor_acados_sim_create(quadrotor_sim_solver_capsule * capsule)
     double* p = calloc(np, sizeof(double));
     
     p[0] = 1;
-    p[18] = 1;
     p[19] = 1;
     p[20] = 1;
     p[21] = 1;
@@ -202,6 +201,9 @@ int quadrotor_acados_sim_create(quadrotor_sim_solver_capsule * capsule)
     p[47] = 1;
     p[48] = 1;
     p[49] = 1;
+    p[50] = 1;
+    p[51] = 1;
+    p[52] = 1;
 
     quadrotor_acados_sim_update_params(capsule, p, np);
     free(p);
@@ -209,8 +211,8 @@ int quadrotor_acados_sim_create(quadrotor_sim_solver_capsule * capsule)
 
     /* initialize input */
     // x
-    double x0[14];
-    for (int ii = 0; ii < 14; ii++)
+    double x0[15];
+    for (int ii = 0; ii < 15; ii++)
         x0[ii] = 0.0;
 
     sim_in_set(quadrotor_sim_config, quadrotor_sim_dims,
@@ -226,11 +228,11 @@ int quadrotor_acados_sim_create(quadrotor_sim_solver_capsule * capsule)
                quadrotor_sim_in, "u", u0);
 
     // S_forw
-    double S_forw[252];
-    for (int ii = 0; ii < 252; ii++)
+    double S_forw[285];
+    for (int ii = 0; ii < 285; ii++)
         S_forw[ii] = 0.0;
-    for (int ii = 0; ii < 14; ii++)
-        S_forw[ii + ii * 14 ] = 1.0;
+    for (int ii = 0; ii < 15; ii++)
+        S_forw[ii + ii * 15 ] = 1.0;
 
 
     sim_in_set(quadrotor_sim_config, quadrotor_sim_dims,

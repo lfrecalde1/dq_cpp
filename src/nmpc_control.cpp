@@ -37,6 +37,7 @@ double NMPCControl::getStampState() { return stamp_current_state_; }
 
 Eigen::Matrix<double, kStateSize, 1> NMPCControl::getPredictedState() { return predicted_states_.col(1); }
 Eigen::Matrix<double, kInputSize, 1> NMPCControl::getPredictedInput() { return predicted_inputs_.col(0); }
+Eigen::Matrix<double, kInputSize, 1> NMPCControl::getPredictedInput_k_1() { return predicted_inputs_.col(1); }
 Eigen::Matrix<double, kStateSize, kSamples> NMPCControl::getPredictedStates() { return predicted_states_; }
 Eigen::Matrix<double, kStateSize, kSamples> NMPCControl::getReferenceStates() { return reference_states_; }
 Eigen::Matrix<double, kInputSize, kSamples> NMPCControl::getReferenceInputs() { return reference_inputs_; }
