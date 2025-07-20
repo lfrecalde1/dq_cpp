@@ -13,6 +13,7 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/empty.hpp>
+#include <geometry_msgs/msg/wrench_stamped.hpp>
 
 namespace dq_nmpc_control_nodelet {
 class NMPCControlNodelet : public rclcpp::Node {
@@ -122,6 +123,8 @@ public:
             "imu", 1, std::bind(&NMPCControlNodelet::imuCallback, this, std::placeholders::_1));
         sub_motors_ = this->create_subscription<std_msgs::msg::Bool>(
             "motors", 1, std::bind(&NMPCControlNodelet::motorsCallback, this, std::placeholders::_1));
+        sub_wrench_ = this->create_subscription<geometry_msgs::msg::WrenchStamped>(
+            "wrench", 1, std::bind(&NMPCControlNodelet::wrenchCallback, this, std::placeholders::_1));
     }
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -152,6 +155,7 @@ private:
     std::string frame_id_;
     Eigen::Vector4d pre_odom_quat_;
     bool enable_motors_;
+    double force_real_;
     bool _optimization_error;
     bool _aux_initial;
     bool set_pre_odom_quat_;
@@ -182,6 +186,7 @@ private:
     void odomCallback(const nav_msgs::msg::Odometry::SharedPtr odom_msg);
     void imuCallback(const sensor_msgs::msg::Imu::SharedPtr imu_msg);
     void motorsCallback(const std_msgs::msg::Bool::SharedPtr msg);
+    void wrenchCallback(const geometry_msgs::msg::WrenchStamped::SharedPtr wrench_msg);
 
     rclcpp::Publisher<quadrotor_msgs::msg::TRPYCommand>::SharedPtr pub_trpy_cmd_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_ref_traj_;
@@ -193,6 +198,9 @@ private:
     rclcpp::Subscription<quadrotor_msgs::msg::PositionCommand>::SharedPtr sub_position_cmd_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_motors_;
+
+    // Subscribe to obtain the force
+    rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr sub_wrench_;
 
 };
 
@@ -316,7 +324,7 @@ void NMPCControlNodelet::referenceCallback(const quadrotor_msgs::msg::PositionCo
         reference_states.col(i) << dual(0), dual(1), dual(2), dual(3),
             dual(4), dual(5), dual(6), dual(7),
             dual(8), dual(9), dual(10),
-            dual(11), dual(12), dual(13);
+            dual(11), dual(12), dual(13), 0.0;
 
         ang_vel << iterator->angular_velocity.x, iterator->angular_velocity.y, iterator->angular_velocity.z;
         ang_acc << iterator->angular_velocity_dot.x, iterator->angular_velocity_dot.y,
@@ -520,6 +528,7 @@ void NMPCControlNodelet::odomCallback(const nav_msgs::msg::Odometry::SharedPtr o
     dual(11) = vector_b(1);
     dual(12) = vector_b(2);
     dual(13) = vector_b(3);
+    dual(14) = force_real_;
 
     controller_.setState(dual, odom_msg->header.stamp.sec + odom_msg->header.stamp.nanosec * 1e-9);
 
@@ -558,6 +567,11 @@ void NMPCControlNodelet::motorsCallback(const std_msgs::msg::Bool::SharedPtr mot
     else
         RCLCPP_INFO(this->get_logger(), "Disabling Motors");
     enable_motors_ = motors_msg->data;
+}
+
+void NMPCControlNodelet::wrenchCallback(const geometry_msgs::msg::WrenchStamped::SharedPtr wrench_msg) {
+    //RCLCPP_INFO(this->get_logger(), "Getting Force");
+    force_real_ = wrench_msg->wrench.force.z;
 }
 
 void NMPCControlNodelet::publishControl(Eigen::Matrix<double, kStateSize, 1> pred_state,
