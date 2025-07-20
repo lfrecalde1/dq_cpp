@@ -21,6 +21,7 @@ find_package(yaml-cpp REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(OsqpEigen REQUIRED)
 
 # ARM NEON flags
 if ("${CMAKE_HOST_SYSTEM_PROCESSOR}" STREQUAL "armv7l")
@@ -73,6 +74,7 @@ target_link_libraries(dq_nmpc_control_nodelet
   ${YAML_CPP_LIBRARIES}
   libacados_ocp_solver_quadrotor.so
   ${acados_lib}/libacados.so
+  OsqpEigen::OsqpEigen
 )
 
 rclcpp_components_register_nodes(dq_nmpc_control_nodelet "dq_nmpc_control_nodelet::NMPCControlNodelet")

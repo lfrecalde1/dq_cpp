@@ -16,7 +16,7 @@ NMPCControl::NMPCControl()
 }
 
 void NMPCControl::setState(const Eigen::Matrix<double, kStateSize, 1> &state, double stamp) {
-    current_state_.block(0, 0, 14, 1) = state.block(0, 0, 14, 1);
+    current_state_.block(0, 0, 15, 1) = state.block(0, 0, 15, 1);
     stamp_current_state_ = stamp;
 }
 void NMPCControl::setOmega(const Eigen::Matrix<double, 3, 1> &omega) { current_state_.block(8, 0, 3, 1) = omega; }

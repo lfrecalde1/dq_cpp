@@ -1,5 +1,4 @@
 #include <dq_cpp/nmpc_control.h>
-
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -14,7 +13,8 @@
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/empty.hpp>
 #include <geometry_msgs/msg/wrench_stamped.hpp>
-
+#include <OsqpEigen/OsqpEigen.h>
+#include <eigen3/Eigen/Sparse>
 namespace dq_nmpc_control_nodelet {
 class NMPCControlNodelet : public rclcpp::Node {
 public:
@@ -31,12 +31,15 @@ public:
         this->declare_parameter("km", 0.0);
         this->declare_parameter("frame_dx", 0.0);
         this->declare_parameter("frame_dy", 0.0);
+        this->declare_parameter("force_delay", 0.0);
+
         logParameter("mass", mass_, "%.4f");
         logParameter("gravity", gravity_, "%.4f");
         logParameter("kf", kf_, "%.14f");
         logParameter("km", km_, "%.14f");
         logParameter("frame_dx", frame_dx_, "%.4f");
         logParameter("frame_dy", frame_dy_, "%.4f");
+        logParameter("force_delay", alpha_, "%.4f");
 
         inertia_matrix_ = Eigen::Matrix3d::Zero();
         this->declare_parameter("ixx", 0.0);
@@ -58,6 +61,7 @@ public:
         RCLCPP_INFO(this->get_logger(), "[NMPC] Q: %s", Q_param.value_to_string().c_str());
         RCLCPP_INFO(this->get_logger(), "[NMPC] Q_e: %s", Q_e_param.value_to_string().c_str());
         RCLCPP_INFO(this->get_logger(), "[NMPC] R: %s", R_param.value_to_string().c_str());
+        RCLCPP_INFO(this->get_logger(), "[NMPC] alpha_: %.4f", alpha_);
         Q_param_ = Q_param.as_double_array();
         Q_e_param_ = Q_e_param.as_double_array();
         R_param_ = R_param.as_double_array();
@@ -167,6 +171,7 @@ private:
     double km_;
     double frame_dx_;
     double frame_dy_;
+    double alpha_;
     Eigen::Matrix4d mixer_matrix_inv_;
     Eigen::Matrix3d inertia_matrix_;
     std::string platform_type_;
@@ -174,11 +179,21 @@ private:
     std::vector<double> Q_e_param_;
     std::vector<double> R_param_;
 
+    // QP formulation
+    using Scalar = double;  // or float if OSQP was compiled as float
+
+    // Unit Vector
+    Eigen::Vector3d ez_{0.0, 0.0, 1.0};
+    Eigen::Matrix3d matrix_ez_;
+
     // ros2
     void run();
     void logParameter();
     void publishControl(Eigen::Matrix<double, kStateSize, 1> pred_state,
-                        Eigen::Matrix<double, kInputSize, 1> pred_input, Eigen::Matrix<double, kInputSize, 1> pred_input_k);
+                        Eigen::Matrix<double, kInputSize, 1> pred_input, Eigen::Matrix<double, kInputSize, 1> pred_input_k, Eigen::Matrix<double, kStateSize, 1> current_state);
+
+    Eigen::Vector4d filterControl(Eigen::Matrix<double, kStateSize, 1> current_state, Eigen::Matrix<double, kInputSize, 1> pred_input);
+
     void publishSafeControl();
     void publishReference();
     void publishPrediction();
@@ -187,6 +202,9 @@ private:
     void imuCallback(const sensor_msgs::msg::Imu::SharedPtr imu_msg);
     void motorsCallback(const std_msgs::msg::Bool::SharedPtr msg);
     void wrenchCallback(const geometry_msgs::msg::WrenchStamped::SharedPtr wrench_msg);
+
+    // Quaternions operators 
+    static Eigen::Matrix3d quatToRot(const Eigen::Vector4d & q);
 
     rclcpp::Publisher<quadrotor_msgs::msg::TRPYCommand>::SharedPtr pub_trpy_cmd_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_ref_traj_;
@@ -320,11 +338,12 @@ void NMPCControlNodelet::referenceCallback(const quadrotor_msgs::msg::PositionCo
         dual(11) = vector_b(1);
         dual(12) = vector_b(2);
         dual(13) = vector_b(3);
+        dual(14) = 0.0;
 
         reference_states.col(i) << dual(0), dual(1), dual(2), dual(3),
             dual(4), dual(5), dual(6), dual(7),
             dual(8), dual(9), dual(10),
-            dual(11), dual(12), dual(13), 0.0;
+            dual(11), dual(12), dual(13), dual(14);
 
         ang_vel << iterator->angular_velocity.x, iterator->angular_velocity.y, iterator->angular_velocity.z;
         ang_acc << iterator->angular_velocity_dot.x, iterator->angular_velocity_dot.y,
@@ -399,8 +418,10 @@ void NMPCControlNodelet::run() {
     Eigen::Matrix<double, kStateSize, 1> pred_state;
     Eigen::Matrix<double, kInputSize, 1> pred_input;
     Eigen::Matrix<double, kInputSize, 1> pred_input_k_1;
+    Eigen::Matrix<double, kStateSize, 1> current_state;
 
     pred_state = controller_.getPredictedState();
+    current_state = controller_.getState();
     pred_input = controller_.getPredictedInput();
     pred_input_k_1 = controller_.getPredictedInput_k_1();
 
@@ -413,9 +434,13 @@ void NMPCControlNodelet::run() {
         _aux_initial = true;
         return;
     }
+    // Show state
+    //std::stringstream ss;
+    //ss << current_state.format(Eigen::IOFormat(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n", "[", "]"));
+    //RCLCPP_INFO(this->get_logger(), "Current state:\n%s", ss.str().c_str());
 
     // Publish solution
-    publishControl(pred_state, pred_input, pred_input_k_1);
+    publishControl(pred_state, pred_input, pred_input_k_1, current_state);
     publishPrediction();
     publishReference();
 }
@@ -574,8 +599,130 @@ void NMPCControlNodelet::wrenchCallback(const geometry_msgs::msg::WrenchStamped:
     force_real_ = wrench_msg->wrench.force.z;
 }
 
+Eigen::Vector4d NMPCControlNodelet::filterControl(Eigen::Matrix<double, kStateSize, 1> current_state,
+                                                  Eigen::Matrix<double, kInputSize, 1> pred_input) 
+{
+    using Scalar = double;
+    const int num_vars = 4;
+    const int num_constraints = 1;
+
+    // States
+    Eigen::Vector4d q = current_state.segment<4>(0);
+    Eigen::Vector3d omega = current_state.segment<3>(8);
+    Eigen::Vector3d v_b = current_state.segment<3>(11);
+    float force = current_state(14);
+
+    // Predicted inputs (reference)
+    float f_ref = pred_input(0);
+    Eigen::Vector3d w_ref = pred_input.segment<3>(1);
+
+    // Setup current state helpers
+    Eigen::Matrix3d R = quatToRot(q);
+    Eigen::Vector3d v_I = R * v_b;
+    Eigen::Vector3d a_I = R * ez_ * (force / mass_) - gravity_ * ez_;
+
+    matrix_ez_ <<
+      0.0,  1.0, 0.0,
+     -1.0, 0.0, 0.0,
+      0.0,  0.0, 0.0;
+
+    // Define obstacle
+    Eigen::Vector3d obstacle{6.18, -0.92, 2.0};
+
+    // Translation estimate
+    Eigen::Matrix<double, kStateSize, 1> dual_ref = current_state;
+    Eigen::Vector4d quat_c;
+    quat_c << dual_ref(0), -dual_ref(1), -dual_ref(2), -dual_ref(3);
+    Eigen::Vector4d quat = dual_ref.segment<4>(0);
+    Eigen::Vector4d dual_part = dual_ref.segment<4>(4);
+    Eigen::Matrix4d H_plus_dual_part;
+    H_plus_dual_part << 
+      dual_part(0), -dual_part(1), -dual_part(2), -dual_part(3),
+      dual_part(1),  dual_part(0), -dual_part(3),  dual_part(2),
+      dual_part(2),  dual_part(3),  dual_part(0), -dual_part(1),
+      dual_part(3), -dual_part(2),  dual_part(1),  dual_part(0);
+
+    Eigen::Vector4d t_part = 2 * H_plus_dual_part * quat_c;
+    Eigen::Vector3d t = t_part.segment<3>(1);
+    Eigen::Vector3d distance = t - obstacle;
+
+    // Barrier function terms
+    double radius = 0.1;
+    double h = distance.dot(distance) - radius * radius;
+    double h_dot = 2 * distance.dot(v_I);
+    double h_dotdot = 2 * (v_I.dot(v_I) + distance.dot(a_I));
+
+    // Coefficients for jerk-dependent term
+    // Note: u_cmd = [f_cmd, w_x_cmd, w_y_cmd, w_z_cmd]
+    // Compute coefficient for f_cmd
+    double cf = 2 * distance.dot(R * ez_) / (mass_ * alpha_);
+
+    // Compute coefficients for w_cmd
+    Eigen::Vector3d c_w = -2 * (force / mass_) * distance.transpose() * R * matrix_ez_;
+
+    // Constant part of h_dotdotdot
+    double h_dotdotdot_const = 2 * (3 * a_I.dot(v_I) 
+        - distance.dot((R * ez_) * (force / (mass_ * alpha_))));
+
+    // Full constraint affine form:
+    // constraint = cf * f_cmd + c_w.dot(w_cmd) + r >= 0
+    double a2 = 7.11;
+    double a1 = 15.66;
+    double a0 = 10.0;
+
+    double r = h_dotdotdot_const + a2 * h_dotdot + a1 * h_dot + a0 * h;
+
+    // Setup QP matrices
+    double penalty_scale = 10.0;
+    Eigen::SparseMatrix<Scalar> H_qp(num_vars, num_vars);
+    H_qp.reserve(Eigen::VectorXi::Constant(num_vars, 1));
+
+    for (int i = 0; i < num_vars; ++i) {
+        H_qp.insert(i, i) = penalty_scale;
+    }
+    H_qp.makeCompressed();
+
+    Eigen::VectorXd grad(num_vars);
+    grad(0) = -f_ref;
+    grad.segment<3>(1) = -w_ref;
+
+    Eigen::SparseMatrix<Scalar> A_qp(num_constraints, num_vars);
+    A_qp.insert(0, 0) = -cf;
+    A_qp.insert(0, 1) = -c_w(0);
+    A_qp.insert(0, 2) = -c_w(1);
+    A_qp.insert(0, 3) = -c_w(2);
+    A_qp.makeCompressed();
+
+    Eigen::VectorXd l(num_constraints), u(num_constraints);
+    l(0) = -OsqpEigen::INFTY;
+    u(0) = -r;  // rhs value for Ax <= b
+
+    // Setup solver
+    OsqpEigen::Solver solver;
+    solver.settings()->setVerbosity(false);  // 👈 turn off printing
+    solver.data()->setNumberOfVariables(num_vars);
+    solver.data()->setNumberOfConstraints(num_constraints);
+    solver.data()->setHessianMatrix(H_qp);
+    solver.data()->setGradient(grad);
+    //solver.data()->setLinearConstraintsMatrix(A_qp);
+    //solver.data()->setLowerBound(l);
+    //solver.data()->setUpperBound(u);
+
+    if (!solver.initSolver() || !solver.solve()) {
+        RCLCPP_WARN(this->get_logger(), "CBF-QP solver failed, fallback to pred_input");
+        return pred_input.segment<4>(0);  // fallback return w_cmd = w_ref
+    }
+
+    Eigen::VectorXd solution = solver.getSolution();
+    double f_cmd = solution(0);
+    Eigen::Vector3d w_cmd = solution.segment<3>(1);
+    Eigen::Vector4d filter_values = solution;
+
+    return filter_values;  // return filtered angular rates
+}
+
 void NMPCControlNodelet::publishControl(Eigen::Matrix<double, kStateSize, 1> pred_state,
-                                        Eigen::Matrix<double, kInputSize, 1> pred_input, Eigen::Matrix<double, kInputSize, 1> pred_input_k) {
+                                        Eigen::Matrix<double, kInputSize, 1> pred_input, Eigen::Matrix<double, kInputSize, 1> pred_input_k, Eigen::Matrix<double, kStateSize, 1> current_state) {
     //Eigen::Matrix<double, kStateSize, 1> pred_state = controller_.getPredictedState();
     //Eigen::Matrix<double, kInputSize, 1> pred_input = controller_.getPredictedInput();
     quadrotor_msgs::msg::TRPYCommand trpy_msg;
@@ -592,6 +739,19 @@ void NMPCControlNodelet::publishControl(Eigen::Matrix<double, kStateSize, 1> pre
     trpy_msg.aux.enable_motors = enable_motors_;
     trpy_msg.thrust = pred_input(0);
     trpy_msg.thrust_k = pred_input_k(0);
+
+
+    // Filter Control Actions
+    Eigen::Vector4d virtual_cmd;
+    virtual_cmd << pred_input(0), pred_state(8), pred_state(9), pred_state(10);
+    Eigen::Vector4d filter = filterControl(current_state, virtual_cmd);
+
+    trpy_msg.thrust_filter = filter(0);
+    trpy_msg.angular_velocity_filter.x = filter(1);
+    trpy_msg.angular_velocity_filter.y = filter(2);
+    trpy_msg.angular_velocity_filter.z = filter(3);
+
+
     trpy_msg.angular_velocity.x = pred_state(8);
     trpy_msg.angular_velocity.y = pred_state(9);
     trpy_msg.angular_velocity.z = pred_state(10);
@@ -748,6 +908,28 @@ void NMPCControlNodelet::publishPrediction() {
         path_msg.poses.push_back(pose);
     }
     pub_pred_traj_->publish(path_msg);
+}
+
+Eigen::Matrix3d NMPCControlNodelet::quatToRot(const Eigen::Vector4d & qvec)
+{
+  // Assumes q = [w, x, y, z]  (same ordering as your Python code)
+  const double q0 = qvec(0);
+  const double q1 = qvec(1);
+  const double q2 = qvec(2);
+  const double q3 = qvec(3);
+
+  const double q0q0 = q0 * q0;
+  const double q1q1 = q1 * q1;
+  const double q2q2 = q2 * q2;
+  const double q3q3 = q3 * q3;
+
+  Eigen::Matrix3d R;
+  R <<
+      q0q0 + q1q1 - q2q2 - q3q3,  2.0 * (q1 * q2 - q0 * q3),   2.0 * (q1 * q3 + q0 * q2),
+      2.0 * (q1 * q2 + q0 * q3),  q0q0 + q2q2 - q1q1 - q3q3,   2.0 * (q2 * q3 - q0 * q1),
+      2.0 * (q1 * q3 - q0 * q2),  2.0 * (q2 * q3 + q0 * q1),   q0q0 + q3q3 - q1q1 - q2q2;
+
+  return R;
 }
 
 }  // namespace nmpc_control_nodelet
